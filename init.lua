@@ -12,11 +12,9 @@
  ╚═══════════════════════════════════════════════════════════════════════╝
 ]]--
 
--- 1. Magic buttons
 vim.g.mapleader = " "
 vim.g.maplocalleader = " "
 
--- 2. Simple options – explained like you’re a kid
 local opt = vim.opt
 opt.number = true
 opt.relativenumber = true
@@ -31,17 +29,16 @@ opt.signcolumn = "yes"
 opt.cursorline = true
 opt.scrolloff = 8
 opt.updatetime = 300
-opt.timeoutlen = 300       -- after 300ms <Space> shows cheat sheet
+opt.timeoutlen = 300
 opt.splitright = true
 opt.splitbelow = true
-opt.shortmess:append({ I = true })  -- no intro message
+opt.shortmess:append({ I = true })
 
--- 3. Helper functions for the welcome screen (like VS Code)
 function _G.OpenFolder()
   local path = vim.fn.input("📂 Open folder: ", vim.fn.getcwd() .. "/", "dir")
   if path ~= "" then
     vim.cmd("cd " .. vim.fn.fnameescape(path))
-    require("nvim-tree").open()
+    vim.cmd("NvimTreeOpen")
   end
 end
 
@@ -52,14 +49,13 @@ function _G.CloneRepo()
     if dir ~= "" then
       vim.fn.system({ "git", "clone", url, dir })
       vim.cmd("cd " .. vim.fn.fnameescape(dir))
-      require("nvim-tree").open()
+      vim.cmd("NvimTreeOpen")
     end
   end
 end
 
--- 4. Lazy.nvim – installs itself
 local lazypath = vim.fn.stdpath("data") .. "/lazy/lazy.nvim"
-if not vim.loop.fs_stat(lazypath) then
+if not vim.uv.fs_stat(lazypath) then
   vim.fn.system({
     "git", "clone", "--filter=blob:none",
     "https://github.com/folke/lazy.nvim.git",
@@ -68,10 +64,7 @@ if not vim.loop.fs_stat(lazypath) then
 end
 vim.opt.rtp:prepend(lazypath)
 
--- 5. All plugins – your super powers
 local plugins = {
-
-  -- 🎨 Dark hacker theme (Catppuccin)
   {
     "catppuccin/nvim", name = "catppuccin", priority = 1000,
     config = function()
@@ -80,14 +73,11 @@ local plugins = {
     end,
   },
 
-  -- 🏠 Welcome page – looks exactly like VS Code
   {
     "goolord/alpha-nvim", event = "VimEnter",
     config = function()
       local alpha = require("alpha")
       local dashboard = require("alpha.themes.dashboard")
-
-      -- NASA ASCII art (clean and simple)
       dashboard.section.header.val = {
         "                                                     ",
         "     ███╗   ██╗ █████╗ ███████╗ █████╗               ",
@@ -101,81 +91,89 @@ local plugins = {
         "      Press [SPACE] to see the smart cheat sheet    ",
         "                                                     ",
       }
-
-      -- VS Code‑style buttons (press the letter in brackets)
       dashboard.section.buttons.val = {
         dashboard.button("o", "📂  Open Folder",     ":lua OpenFolder()<CR>"),
-        dashboard.button("n", "📄  New File",        ":ene <BAR> startinsert<CR>"),
+        dashboard.button("n", "📄  New File",        ":ene | startinsert<CR>"),
         dashboard.button("r", "🕒  Recent Files",    ":Telescope oldfiles<CR>"),
         dashboard.button("g", "⬇️  Clone Repository", ":lua CloneRepo()<CR>"),
         dashboard.button("c", "⚙️  Open Config",     ":e ~/.config/nvim/init.lua<CR>"),
         dashboard.button("q", "❌  Quit",            ":qa<CR>"),
       }
-
       alpha.setup(dashboard.opts)
     end,
   },
 
-  -- 🧠 Treesitter – code understands itself
+  -- 🌳 Treesitter – fault‑tolerant
   {
-    "nvim-treesitter/nvim-treesitter", build = ":TSUpdate",
-    event = { "BufReadPost", "BufNewFile" },
+    "nvim-treesitter/nvim-treesitter",
+    lazy = false,
     config = function()
-      require("nvim-treesitter.configs").setup({
-        ensure_installed = {
-          "lua","python","javascript","typescript","c","cpp","rust",
-          "bash","json","yaml","markdown","markdown_inline","vim","vimdoc","query",
-        },
-        auto_install = true,
-        highlight = { enable = true },
-        indent = { enable = true },
-      })
+      vim.schedule(function()
+        local ok, ts = pcall(require, "nvim-treesitter.configs")
+        if not ok then
+          vim.notify(
+            "🌳 Treesitter is not installed yet. Run :Lazy sync to install it.",
+            vim.log.levels.WARN
+          )
+          return
+        end
+        ts.setup({
+          ensure_installed = {
+            "lua","python","javascript","typescript","c","cpp","rust",
+            "bash","json","yaml","markdown","markdown_inline","vim","vimdoc","query",
+            "go","java","html","css","dockerfile","sql","latex","make","toml",
+          },
+          auto_install = true,
+          highlight = { enable = true },
+          indent = { enable = true },
+        })
+      end)
     end,
   },
 
-  -- 📦 Mason – installs language servers
   { "williamboman/mason.nvim", build = ":MasonUpdate", cmd = "Mason", config = true },
+  { "williamboman/mason-lspconfig.nvim", dependencies = { "mason.nvim" } },
 
-  -- 🔗 Mason + LSP config
   {
-    "williamboman/mason-lspconfig.nvim", dependencies = { "mason.nvim" },
-    event = { "BufReadPre", "BufNewFile" },
-    config = function()
-      require("mason-lspconfig").setup({
-        ensure_installed = { "lua_ls", "pyright", "clangd", "bashls", "tsserver" },
-        automatic_installation = true,
-      })
-    end,
-  },
-
-  -- 🚀 LSP – Go to definition, rename, format…
-  {
-    "neovim/nvim-lspconfig", dependencies = { "mason-lspconfig.nvim", "nvim-cmp" },
+    "neovim/nvim-lspconfig",
+    dependencies = { "mason-lspconfig.nvim", "nvim-cmp" },
     event = { "BufReadPre", "BufNewFile" },
     config = function()
       local lspconfig = require("lspconfig")
       local capabilities = require("cmp_nvim_lsp").default_capabilities()
       local on_attach = function(client, bufnr)
         local opts = { noremap = true, silent = true, buffer = bufnr }
-        vim.keymap.set("n", "gd", vim.lsp.buf.definition, opts)            -- go to definition
-        vim.keymap.set("n", "K",  vim.lsp.buf.hover, opts)                -- show info
-        vim.keymap.set("n", "gi", vim.lsp.buf.implementation, opts)       -- go to implementation
-        vim.keymap.set("n", "gr", vim.lsp.buf.references, opts)           -- find references
-        vim.keymap.set("n", "<leader>lr", vim.lsp.buf.rename, opts)       -- rename symbol
-        vim.keymap.set("n", "<leader>la", vim.lsp.buf.code_action, opts)  -- fix / actions
-        vim.keymap.set("n", "<leader>lf", vim.lsp.buf.format, opts)       -- format document
+        vim.keymap.set("n", "gd", vim.lsp.buf.definition, opts)
+        vim.keymap.set("n", "K",  vim.lsp.buf.hover, opts)
+        vim.keymap.set("n", "gi", vim.lsp.buf.implementation, opts)
+        vim.keymap.set("n", "gr", vim.lsp.buf.references, opts)
+        vim.keymap.set("n", "<leader>lr", vim.lsp.buf.rename, opts)
+        vim.keymap.set("n", "<leader>la", vim.lsp.buf.code_action, opts)
+        vim.keymap.set("n", "<leader>lf", vim.lsp.buf.format, opts)
         vim.keymap.set("n", "<leader>ls", "<cmd>Telescope lsp_document_symbols<CR>", opts)
         vim.keymap.set("n", "<leader>lw", "<cmd>Telescope lsp_dynamic_workspace_symbols<CR>", opts)
       end
-      require("mason-lspconfig").setup_handlers({
-        function(server_name)
-          lspconfig[server_name].setup({ on_attach = on_attach, capabilities = capabilities })
-        end,
+
+      require("mason-lspconfig").setup({
+        ensure_installed = {
+          "lua_ls", "pyright", "clangd", "bashls", "ts_ls",
+          "html", "cssls", "jsonls", "yamlls", "gopls",
+          "rust_analyzer", "jdtls", "marksman", "vimls",
+          "tailwindcss", "prismals", "dockerls", "sqlls",
+        },
+        automatic_installation = true,
+        handlers = {
+          function(server_name)
+            lspconfig[server_name].setup({
+              on_attach = on_attach,
+              capabilities = capabilities,
+            })
+          end,
+        },
       })
     end,
   },
 
-  -- 🤖 Autocompletion – like Siri guessing your words
   {
     "hrsh7th/nvim-cmp",
     dependencies = {
@@ -206,13 +204,14 @@ local plugins = {
             else fallback() end
           end, { "i", "s" }),
         }),
-        sources = cmp.config.sources({ { name = "nvim_lsp" }, { name = "luasnip" } },
-          { { name = "buffer" }, { name = "path" } }),
+        sources = cmp.config.sources(
+          { { name = "nvim_lsp" }, { name = "luasnip" } },
+          { { name = "buffer" }, { name = "path" } }
+        ),
       })
     end,
   },
 
-  -- 🔭 Telescope – find anything instantly
   {
     "nvim-telescope/telescope.nvim", dependencies = { "nvim-lua/plenary.nvim" },
     cmd = "Telescope",
@@ -233,7 +232,6 @@ local plugins = {
     end,
   },
 
-  -- 📁 File tree (like VS Code sidebar)
   {
     "nvim-tree/nvim-tree.lua", dependencies = { "nvim-tree/nvim-web-devicons" },
     keys = {
@@ -249,16 +247,12 @@ local plugins = {
     end,
   },
 
-  -- 📊 Fancy status line
   {
     "nvim-lualine/lualine.nvim", dependencies = { "nvim-tree/nvim-web-devicons" },
     event = "BufReadPost",
-    config = function()
-      require("lualine").setup({ options = { theme = "catppuccin" } })
-    end,
+    config = function() require("lualine").setup({ options = { theme = "catppuccin" } }) end,
   },
 
-  -- 🔀 Git signs
   {
     "lewis6991/gitsigns.nvim", event = { "BufReadPre", "BufNewFile" },
     config = function()
@@ -272,7 +266,6 @@ local plugins = {
     end,
   },
 
-  -- ❓ Smart cheat sheet (press Space and wait)
   {
     "folke/which-key.nvim", event = "VeryLazy",
     config = function()
@@ -291,20 +284,15 @@ local plugins = {
     end,
   },
 
-  -- ✨ Auto‑close brackets, quotes, etc.
   { "windwp/nvim-autopairs", event = "InsertEnter", config = function() require("nvim-autopairs").setup() end },
-
-  -- 💬 Comment with `gc` (line) or `gb` (block)
   { "numToStr/Comment.nvim", keys = { "gc", "gb" }, config = function() require("Comment").setup() end },
 
-  -- ⬜ Indent guides
   {
     "lukas-reineke/indent-blankline.nvim", main = "ibl",
     event = { "BufReadPost", "BufNewFile" },
     config = function() require("ibl").setup() end,
   },
 
-  -- 🚨 Diagnostics list
   {
     "folke/trouble.nvim", dependencies = { "nvim-tree/nvim-web-devicons" },
     keys = {
@@ -317,21 +305,20 @@ local plugins = {
     config = true,
   },
 
-  -- 💻 Floating terminal (Ctrl+\)
   {
     "akinsho/toggleterm.nvim", version = "*",
     keys = { { "<C-\\>", "<cmd>ToggleTerm<CR>", desc = "Floating terminal" } },
-    config = function() require("toggleterm").setup({ open_mapping = [[<C-\>]], direction = "float", float_opts = { border = "curved" } }) end,
+    config = function()
+      require("toggleterm").setup({ direction = "float", float_opts = { border = "curved" } })
+    end,
   },
 
-  -- 🛸 Surround words (ys, ds, cs)
   {
     "kylechui/nvim-surround", version = "*",
     keys = { "ys", "ds", "cs" },
     config = function() require("nvim-surround").setup() end,
   },
 
-  -- 🐞 Debugger – step through code like a NASA engineer
   {
     "mfussenegger/nvim-dap",
     dependencies = { "rcarriga/nvim-dap-ui", "theHamsta/nvim-dap-virtual-text", "williamboman/mason.nvim", "jay-babu/mason-nvim-dap.nvim" },
@@ -349,16 +336,16 @@ local plugins = {
       local dapui = require("dapui")
       dapui.setup()
       require("nvim-dap-virtual-text").setup()
-      require("mason-nvim-dap").setup({ automatic_installation = true, ensure_installed = { "python", "codelldb" } })
-
+      require("mason-nvim-dap").setup({
+        automatic_installation = true,
+        ensure_installed = { "debugpy", "codelldb" },
+      })
       dap.adapters.python = { type = "executable", command = "python3", args = { "-m", "debugpy.adapter" } }
       dap.configurations.python = { { type = "python", request = "launch", name = "Launch file", program = "${file}", pythonPath = function() return "python3" end } }
-
       dap.adapters.codelldb = { type = "server", port = "${port}", executable = { command = vim.fn.stdpath("data") .. "/mason/bin/codelldb", args = { "--port", "${port}" } } }
       dap.configurations.cpp = { { name = "Launch file", type = "codelldb", request = "launch", program = function() return vim.fn.input("Path to executable: ", vim.fn.getcwd() .. "/", "file") end, cwd = "${workspaceFolder}" } }
       dap.configurations.c = dap.configurations.cpp
       dap.configurations.rust = dap.configurations.cpp
-
       dap.listeners.after.event_initialized["dapui_config"] = function() dapui.open() end
       dap.listeners.before.event_terminated["dapui_config"] = function() dapui.close() end
       dap.listeners.before.event_exited["dapui_config"] = function() dapui.close() end
@@ -366,32 +353,22 @@ local plugins = {
   },
 }
 
--- 6. Extra keybindings (window movement, save/quit, etc.)
--- Move between windows
+-- Keymaps
 vim.keymap.set("n", "<C-h>", "<C-w>h", { desc = "Left window" })
 vim.keymap.set("n", "<C-j>", "<C-w>j", { desc = "Down window" })
 vim.keymap.set("n", "<C-k>", "<C-w>k", { desc = "Up window" })
 vim.keymap.set("n", "<C-l>", "<C-w>l", { desc = "Right window" })
-
--- Resize windows
 vim.keymap.set("n", "<C-Up>", ":resize +2<CR>", { desc = "Increase height" })
 vim.keymap.set("n", "<C-Down>", ":resize -2<CR>", { desc = "Decrease height" })
 vim.keymap.set("n", "<C-Left>", ":vertical resize -2<CR>", { desc = "Decrease width" })
 vim.keymap.set("n", "<C-Right>", ":vertical resize +2<CR>", { desc = "Increase width" })
-
--- Terminal escape
 vim.keymap.set("t", "<Esc>", "<C-\\><C-n>", { desc = "Leave terminal" })
-
--- Save / quit
 vim.keymap.set("n", "<leader>w", ":w<CR>", { desc = "Save" })
 vim.keymap.set("n", "<leader>q", ":q<CR>", { desc = "Quit" })
 vim.keymap.set("n", "<leader>x", ":wq<CR>", { desc = "Save & Quit" })
 vim.keymap.set("n", "<leader>bd", ":bd<CR>", { desc = "Close buffer" })
-
--- Clear search highlight
 vim.keymap.set("n", "<Esc>", ":noh<CR>", { desc = "Clear highlights" })
 
--- 7. Launch lazy.nvim with a beautiful Apple‑style setup screen
 require("lazy").setup(plugins, {
   install = { colorscheme = { "catppuccin" } },
   checker = { enabled = true },
@@ -406,13 +383,12 @@ require("lazy").setup(plugins, {
   },
 })
 
--- 8. Show the smart cheat sheet automatically when nothing is opened
 vim.api.nvim_create_autocmd("VimEnter", {
   callback = function()
     if vim.fn.argc() == 0 then
-      vim.defer_fn(function() pcall(vim.cmd, "WhichKey") end, 500)
+      vim.defer_fn(function()
+        pcall(function() require("which-key").show({ global = false }) end)
+      end, 500)
     end
   end,
 })
-
--- YOU ARE READY TO HACK THE PLANET. PRESS [SPACE] AND START TAPPING. 🚀
